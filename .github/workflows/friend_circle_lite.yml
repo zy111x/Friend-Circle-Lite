@@ -12,6 +12,9 @@ env:
 jobs:
   friend-circle-lite:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
 
     steps:
     - name: Pull Latest Repository
@@ -73,7 +76,7 @@ jobs:
     - name: Build static publish directory
       run: |
         mkdir pages
-        cp -r main ./static/edgeone.json ./static/_headers ./static/index.html ./static/readme.md ./static/favicon.ico ./static/bg-light.webp ./temp/cache.json ./static/bg-dark.webp all.json errors.json pages/
+        cp -r main ./static/edgeone.json ./static/_headers ./static/index.html ./static/readme.md ./static/favicon.ico ./static/bg-light.webp ./static/bg-dark.webp all.json errors.json pages/
 
     - name: Publish static assets to branches
       run: |
