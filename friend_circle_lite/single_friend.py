@@ -55,13 +55,20 @@ def process_friend(friend, session: requests.Session, count: int, specific_and_c
     endpoint = None
     cache_update = CacheUpdate(action='none', name=website.name)
     if entry:
-        endpoint = {'feed_type': 'specific', 'url': entry['url'], 'source': entry.get('source', 'unknown')}
-        logging.info(f"“{website.name}” 使用预设 RSS 源：{entry['url']} （source={entry.get('source', 'unknown')}）。")
+        source = entry.get('source', 'unknown')
+        endpoint = {'feed_type': 'specific', 'url': entry['url'], 'source': source}
+        if source == 'manual':
+            logging.info(f"'{website.name}' 使用预设 RSS 源：{entry['url']}")
+        elif source == 'cache':
+            logging.info(f"'{website.name}' 使用缓存 RSS 源：{entry['url']}")
+        else:
+            logging.info(f"'{website.name}' 使用 RSS 源：{entry['url']} (来源: {source})")
     else:
         feed_type, feed_url = check_feed(website.url, session)
         if feed_type != 'none' and feed_url:
             endpoint = {'feed_type': feed_type, 'url': feed_url, 'source': 'auto'}
             cache_update = CacheUpdate(action='set', name=website.name, url=feed_url, reason='auto_discovered')
+            logging.info(f"'{website.name}' 自动探测到 RSS：{feed_url}")
 
     articles = []
     parse_error = endpoint is not None
@@ -80,7 +87,7 @@ def process_friend(friend, session: requests.Session, count: int, specific_and_c
         parse_error = not articles
 
     if parse_error and endpoint and endpoint['source'] in ('cache', 'unknown'):
-        logging.info(f"缓存 RSS 无效，重新探测：{website.name} ({website.url})。")
+        logging.warning(f"'{website.name}' 缓存的 RSS 源无效，尝试重新探测...")
         new_feed_type, new_feed_url = check_feed(website.url, session)
         if new_feed_type != 'none' and new_feed_url:
             reparsed = FeedParserService(session).parse(new_feed_url, count=count, blog_url=website.url)
@@ -97,12 +104,15 @@ def process_friend(friend, session: requests.Session, count: int, specific_and_c
             if articles:
                 endpoint = {'feed_type': new_feed_type, 'url': new_feed_url, 'source': 'auto'}
                 cache_update = CacheUpdate(action='set', name=website.name, url=new_feed_url, reason='repair_cache')
+                logging.info(f"'{website.name}' 重新探测成功，更新缓存：{new_feed_url}")
             else:
                 endpoint = None
                 cache_update = CacheUpdate(action='delete', name=website.name, url=None, reason='remove_invalid')
+                logging.warning(f"'{website.name}' 重新探测失败，删除无效缓存")
         else:
             endpoint = None
             cache_update = CacheUpdate(action='delete', name=website.name, url=None, reason='remove_invalid')
+            logging.warning(f"'{website.name}' 未找到有效 RSS，删除无效缓存")
 
     return {
         'name': website.name,

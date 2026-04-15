@@ -55,7 +55,7 @@ class FeedDiscoveryService:
             if "<rss" in text_head or "<feed" in text_head or "<rdf:rdf" in text_head:
                 return FeedEndpoint(url=feed_url, feed_type=feed_type, source="auto")
 
-        logging.warning(f"无法找到 {website_url} 的订阅链接")
+        logging.warning(f"未找到 {website_url} 的 RSS 订阅源")
         return None
 
 
@@ -76,7 +76,7 @@ class FeedParserService:
             response.encoding = response.apparent_encoding or "utf-8"
             feed = feedparser.parse(response.text)
         except Exception as exc:
-            logging.error(f"无法解析 FEED 地址：{feed_url} ，请自行排查原因！错误信息: {exc}")
+            logging.error(f"解析 RSS 失败：{feed_url}，错误: {exc}")
             return []
 
         default_author = feed.feed.author if "author" in feed.feed else ""
@@ -116,34 +116,92 @@ class FeedParserService:
 class LatestArticleTracker:
     """Track whether a website published new posts since the last crawl."""
 
-    def __init__(self, storage_path: str | Path):
-        self.storage_path = Path(storage_path)
+    def __init__(self, storage_path: str | Path, max_tracked_articles: int = 10):
+        from friend_circle_lite.cache_store import ArticleTrackingStore
+        self.store = ArticleTrackingStore(storage_path, max_tracked_articles)
 
     def diff_and_persist(self, latest_articles: list[Article]) -> list[dict] | None:
-        """Return newly seen articles and update the local snapshot file."""
-        previous_links = self._load_previous_links()
-        updated_articles = [article.to_tracking_dict() for article in latest_articles if article.link not in previous_links]
-        self._persist(latest_articles)
-        return updated_articles if updated_articles else None
+        """Return newly seen articles and update the local storage.
+        
+        Returns None if:
+        - This is the first run (no previous data exists)
+        - No new articles are found
+        - New articles exist but are not newer than the most recent tracked article
+        """
+        previous_articles = self.store.load_articles()
+        
+        # First run: no previous data exists, skip sending to prevent sending old articles
+        if not previous_articles:
+            logging.info(f"首次运行：跳过推送以防止发送旧文章")
+            self.store.save_articles(latest_articles)
+            return None
+        
+        previous_latest_date = self._get_latest_date(previous_articles)
+        
+        # Find articles that are truly new (check only: link, title, published)
+        new_articles = []
+        for article in latest_articles:
+            if self._is_truly_new_article(article, previous_articles):
+                new_articles.append(article)
+        
+        if not new_articles:
+            self.store.save_articles(latest_articles)
+            return None
+        
+        # Filter new articles: only keep those newer than the previous latest date
+        truly_new_articles = []
+        for article in new_articles:
+            if not article.published:
+                continue
+            try:
+                article_date = datetime.strptime(article.published, "%Y-%m-%d %H:%M")
+                if previous_latest_date is None or article_date > previous_latest_date:
+                    truly_new_articles.append(article)
+            except Exception as exc:
+                logging.warning(f"解析文章日期失败: {article.title}, 日期: {article.published}, 错误: {exc}")
+                continue
+        
+        self.store.save_articles(latest_articles)
+        
+        if truly_new_articles:
+            logging.info(f"发现 {len(truly_new_articles)} 篇新文章（日期比之前更新）")
+            return [article.to_tracking_dict() for article in truly_new_articles]
+        else:
+            logging.info(f"发现 {len(new_articles)} 篇新文章，但日期不够新，跳过推送")
+            return None
 
-    def _load_previous_links(self) -> set[str]:
-        if not self.storage_path.exists():
-            return set()
-        try:
-            with open(self.storage_path, "r", encoding="utf-8") as file:
-                payload = json.load(file)
-        except Exception as exc:
-            logging.warning(f"读取最新文章缓存失败: {self.storage_path}, 错误信息: {exc}")
-            return set()
+    @staticmethod
+    def _is_truly_new_article(article: Article, previous_articles: list[Article]) -> bool:
+        """Check if an article is truly new by comparing link, title, and published date.
+        
+        An article is considered new only if its link, title, and published date
+        do not match any previous article (empty values are skipped).
+        """
+        for prev in previous_articles:
+            # Check link, title, and published: if any non-empty field matches, it's not new
+            if article.link and article.link == prev.link:
+                return False
+            if article.title and article.title == prev.title:
+                return False
+            if article.published and article.published == prev.published:
+                return False
+        
+        return True
 
-        articles = payload.get("articles", []) if isinstance(payload, dict) else []
-        return {article.get("link", "") for article in articles if isinstance(article, dict) and article.get("link")}
-
-    def _persist(self, latest_articles: list[Article]) -> None:
-        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"articles": [article.to_tracking_dict() for article in latest_articles]}
-        with open(self.storage_path, "w", encoding="utf-8") as file:
-            json.dump(payload, file, ensure_ascii=False, indent=4)
+    @staticmethod
+    def _get_latest_date(articles: list[Article]) -> datetime | None:
+        """Find the latest publish date from a list of articles."""
+        latest_date = None
+        for article in articles:
+            if not article.published:
+                continue
+            try:
+                article_date = datetime.strptime(article.published, "%Y-%m-%d %H:%M")
+                if latest_date is None or article_date > latest_date:
+                    latest_date = article_date
+            except Exception:
+                continue
+        return latest_date
 
 
 def extract_blog_origin(url: str) -> str:

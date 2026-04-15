@@ -114,8 +114,8 @@ class FriendCircleLiteApplication:
 
         latest_articles = get_latest_articles_from_link(
             url=self.config.rss_subscribe.your_blog_url,
-            count=5,
-            last_articles_path=self.config.runtime_paths.newest_posts_file,
+            count=10,
+            last_articles_path=self.config.runtime_paths.cache_file,
         )
         if not latest_articles:
             logging.info("📭 无新文章，无需推送")

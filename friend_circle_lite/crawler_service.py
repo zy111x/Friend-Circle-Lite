@@ -34,12 +34,17 @@ class WebsiteFeedResolver:
     def resolve(self, website: Website) -> FeedEndpoint | None:
         configured = self.feed_lookup.get(website.name)
         if configured:
-            logging.info(f"“{website.name}” 使用预设 RSS 源：{configured.url} （source={configured.source}）。")
+            if configured.source == 'manual':
+                logging.info(f"'{website.name}' 使用预设 RSS 源：{configured.url}")
+            elif configured.source == 'cache':
+                logging.info(f"'{website.name}' 使用缓存 RSS 源：{configured.url}")
+            else:
+                logging.info(f"'{website.name}' 使用 RSS 源：{configured.url} (来源: {configured.source})")
             return FeedEndpoint(url=configured.url, feed_type="specific", source=configured.source)
 
         discovered = self.discovery_service.discover(website.url)
         if discovered:
-            logging.info(f"“{website.name}” 自动探测 RSS：type：{discovered.feed_type}, url：{discovered.url} 。")
+            logging.info(f"'{website.name}' 自动探测到 RSS：{discovered.url}")
         return discovered
 
 
@@ -62,26 +67,29 @@ class WebsiteCrawler:
         parse_error = endpoint is not None and not articles
 
         if parse_error and endpoint and endpoint.source in ("cache", "unknown"):
-            logging.info(f"缓存 RSS 无效，重新探测：{website.name} ({website.url})。")
+            logging.warning(f"'{website.name}' 缓存的 RSS 源无效，尝试重新探测...")
             rediscovered = self.resolver.discovery_service.discover(website.url)
             if rediscovered:
                 articles = self._parse_articles(rediscovered, website, count)
                 if articles:
                     endpoint = rediscovered
                     cache_update = CacheUpdate(action="set", name=website.name, url=rediscovered.url, reason="repair_cache")
+                    logging.info(f"'{website.name}' 重新探测成功，更新缓存：{rediscovered.url}")
                 else:
                     endpoint = None
                     cache_update = CacheUpdate(action="delete", name=website.name, url=None, reason="remove_invalid")
+                    logging.warning(f"'{website.name}' 重新探测失败，删除无效缓存")
             else:
                 endpoint = None
                 cache_update = CacheUpdate(action="delete", name=website.name, url=None, reason="remove_invalid")
+                logging.warning(f"'{website.name}' 未找到有效 RSS，删除无效缓存")
 
         status = "active" if articles else "error"
         if not articles:
             if endpoint is None:
-                logging.warning(f"{website.name} 的博客 {website.url} 未找到有效 RSS。")
+                logging.warning(f"'{website.name}' 的博客 {website.url} 未找到有效 RSS。")
             else:
-                logging.warning(f"{website.name} 的 RSS {endpoint.url} 未解析出文章。")
+                logging.warning(f"'{website.name}' 的 RSS {endpoint.url} 未解析出文章。")
 
         return CrawlResult(
             website=website,
@@ -214,10 +222,15 @@ class FriendCircleCrawler:
         for name, update in unique_updates.items():
             if update.action == "set" and update.url:
                 cache_map[name] = CacheRecord(name=name, url=update.url, source="cache")
-                logging.info(f"缓存更新：SET {name} -> {update.url} ({update.reason})")
+                if update.reason == "auto_discovered":
+                    logging.info(f"💾 缓存新增：{name} -> {update.url} (自动探测)")
+                elif update.reason == "repair_cache":
+                    logging.info(f"💾 缓存修复：{name} -> {update.url} (重新探测)")
+                else:
+                    logging.info(f"💾 缓存更新：{name} -> {update.url} ({update.reason})")
             elif update.action == "delete" and name in cache_map:
                 cache_map.pop(name)
-                logging.info(f"缓存更新：DELETE {name} ({update.reason})")
+                logging.info(f"🗑️ 缓存删除：{name} (RSS 源失效)")
 
         self.cache_store.save_records(list(cache_map.values()))
 

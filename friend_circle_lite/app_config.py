@@ -13,8 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-DEFAULT_CACHE_FILE = "./temp/feed_cache.sqlite3"
-DEFAULT_NEWEST_POSTS_FILE = "./temp/newest_posts.json"
+DEFAULT_CACHE_FILE = "./temp/cache.sqlite3"
 DEFAULT_ALL_JSON = "./all.json"
 DEFAULT_ERRORS_JSON = "./errors.json"
 
@@ -81,7 +80,6 @@ class RuntimePaths:
     """Filesystem locations used by the runtime."""
 
     cache_file: str = DEFAULT_CACHE_FILE
-    newest_posts_file: str = DEFAULT_NEWEST_POSTS_FILE
     all_json_file: str = DEFAULT_ALL_JSON
     errors_json_file: str = DEFAULT_ERRORS_JSON
 
