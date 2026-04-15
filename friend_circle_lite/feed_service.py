@@ -96,16 +96,57 @@ class FeedParserService:
             articles.append(article)
 
         valid_articles = [article for article in articles if article.published]
-        valid_articles.sort(key=lambda item: datetime.strptime(item.published, "%Y-%m-%d %H:%M"), reverse=True)
-        return valid_articles[:count] if count < len(valid_articles) else valid_articles
+        
+        # 过滤掉无法解析的日期格式
+        def safe_parse_date(article):
+            try:
+                return datetime.strptime(article.published, "%Y-%m-%d %H:%M")
+            except ValueError:
+                logging.warning(f"文章 {article.title} 的发布时间格式异常: {article.published}，已跳过")
+                return None
+        
+        # 只保留能成功解析日期的文章
+        valid_articles_with_dates = []
+        for article in valid_articles:
+            parsed_date = safe_parse_date(article)
+            if parsed_date:
+                valid_articles_with_dates.append((article, parsed_date))
+        
+        # 按日期排序
+        valid_articles_with_dates.sort(key=lambda item: item[1], reverse=True)
+        sorted_articles = [item[0] for item in valid_articles_with_dates]
+        
+        return sorted_articles[:count] if count < len(sorted_articles) else sorted_articles
 
     @staticmethod
     def _extract_published_time(entry) -> str:
         """Extract a normalized publish time from a feed entry."""
+        import time
+        
+        def convert_time_to_string(time_value):
+            """Convert various time formats to string."""
+            if isinstance(time_value, str):
+                return time_value
+            elif isinstance(time_value, time.struct_time):
+                # 检查年份是否异常
+                if time_value.tm_year < 1900:
+                    logging.warning(f"文章 {entry.get('title', 'Unknown')} 的时间年份异常: {time_value.tm_year}，已跳过")
+                    return ""
+                return time.strftime('%Y-%m-%dT%H:%M:%SZ', time_value)
+            else:
+                logging.warning(f"文章 {entry.get('title', 'Unknown')} 的时间格式未知: {type(time_value)}，已跳过")
+                return ""
+        
         if "published" in entry:
-            return format_published_time(entry.published)
+            time_str = convert_time_to_string(entry.published)
+            if not time_str:
+                return ""
+            return format_published_time(time_str)
         if "updated" in entry:
-            published = format_published_time(entry.updated)
+            time_str = convert_time_to_string(entry.updated)
+            if not time_str:
+                return ""
+            published = format_published_time(time_str)
             logging.warning(f"文章 {entry.title} 未包含发布时间，已使用更新时间 {published}")
             return published
 
