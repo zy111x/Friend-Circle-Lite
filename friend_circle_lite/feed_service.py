@@ -73,7 +73,8 @@ class FeedParserService:
         """
         try:
             response = self.session.get(feed_url, headers=HEADERS_XML, timeout=timeout)
-            response.encoding = response.apparent_encoding or "utf-8"
+            # 强制使用 UTF-8 编码，因为 apparent_encoding 可能检测错误
+            response.encoding = "utf-8"
             feed = feedparser.parse(response.text)
         except Exception as exc:
             logging.error(f"解析 RSS 失败：{feed_url}，错误: {exc}")
