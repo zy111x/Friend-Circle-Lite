@@ -30,6 +30,7 @@ class FeedDiscoveryService:
         ("feed3", "/feed/"),
         ("feed4", "/feed.php"),
         ("index", "/index.xml"),
+        ("atom2", "/feed.atom"),
     ]
 
     def __init__(self, session: requests.Session):
