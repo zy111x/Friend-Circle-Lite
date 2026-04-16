@@ -21,16 +21,17 @@ class FeedDiscoveryService:
     """Discover an RSS or Atom endpoint for a website."""
 
     POSSIBLE_FEEDS = [
-        ("atom", "/atom.xml"),
-        ("rss", "/rss.xml"),
-        ("rss2", "/rss2.xml"),
-        ("rss3", "/rss.php"),
-        ("feed", "/feed"),
-        ("feed2", "/feed.xml"),
-        ("feed3", "/feed/"),
-        ("feed4", "/feed.php"),
-        ("index", "/index.xml"),
-        ("atom2", "/feed.atom"),
+        ("rss1", "/feed"),        # WordPress / 最常见
+        ("rss2", "/feed/"),       # WordPress 兼容写法
+        ("rss3", "/rss.xml"),     # 很多传统站点
+        ("rss4", "/atom.xml"),    # 静态博客常见（Hugo / Jekyll）
+        ("rss5", "/feed.xml"),    # 通用型
+        ("rss6", "/index.xml"),   # Hugo / 一些静态站
+        ("rss7", "/feed.atom"),   # Atom 明确路径
+        ("rss8", "/rss2.xml"),    # 老系统遗留
+        ("rss9", "/rss/feed.xml"),# 少见但存在
+        ("rss10", "/rss.php"),    # 老 PHP 程序
+        ("rss11", "/feed.php"),   # 同上
     ]
 
     def __init__(self, session: requests.Session):
